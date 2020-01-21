@@ -323,7 +323,7 @@ class Server():
             self.save()
         self.save_config()
         path = self.root_path + os.sep + 'v2ray-core' + os.sep
-        runcode = path + 'v2ray' + ' -config ' + path + 'config.json'
+        runcode = path + 'v2ray' + ' --config ' + path + 'config.json'
         self.p = subprocess.Popen(runcode, shell=True, stdout=subprocess.PIPE)
         return self.get_selected_node_index(), self.inbound.data['port']
 
