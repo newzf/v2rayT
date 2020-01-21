@@ -487,7 +487,7 @@ class Cli(Cmd):
         else:
             i, port = self.server.run()
             self.prompt = 'v2rayT(running)> '
-        print('选区节点索引为: ', i,'    监听端口为: ', port)
+        print('选取节点索引为: ', i,'    监听端口为: ', port)
 
 
     def stop_service(self, options):
