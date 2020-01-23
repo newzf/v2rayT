@@ -1,23 +1,31 @@
-import urllib.request
 import base64
 import json
 import requests
+import subprocess
 
-def get(url):
-    r = requests.get(url)
-    return r.text
+def get(url, proxy_port=None):
+    session = requests.session()
+    if proxy_port is not None:
+        session.proxies = {'http': 'socks5://127.0.0.1:{}'.format(proxy_port),
+                           'https': 'socks5://127.0.0.1:{}'.format(proxy_port)}
+    return session.get(url).text
 
 
-# def get(url):
-#     """
-#     访问url
-#     """
-#     headers = {
-#         'User-Agent':
-#         'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20100101 Firefox/23.0'
-#     }
-#     req = urllib.request.Request(url=url, headers=headers)
-#     return urllib.request.urlopen(req).read().decode()
+def run_cmd(cmd):
+    result_str = ''
+    process = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result_f = process.stdout
+    error_f = process.stderr
+    errors = error_f.read()
+    if errors: pass
+    result_str = result_f.read().strip()
+    if result_f:
+        result_f.close()
+    if error_f:
+        error_f.close()
+    return result_str
+
+
 
 
 class FileIo():
@@ -63,8 +71,6 @@ class Encoding():
         去等号base64编码
         """
         return Encoding.b64encode_with_eq(s).rstrip('=')
-
-
 
 
 class Dealdata():

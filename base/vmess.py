@@ -28,11 +28,11 @@ def vmesslinks2vemssobjs(vmesslinks):
     return [json.loads(Encoding.b64decode(x[8:])) for x in vmesslinks]
 
 
-def sublink2vmessobjs(sublink):
+def sublink2vmessobjs(sublink, proxy_port=None):
     """
     sublink --> subtext --> vmesslinks --> vmessobjs
     """
-    subtext = get(sublink)
+    subtext = get(sublink, proxy_port)
     if subtext == None:
         return None
     vmesslinks = subtext2vmesslinks(subtext)

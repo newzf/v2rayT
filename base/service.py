@@ -1,9 +1,11 @@
 import os
 from base.config import Inbound, Log, Outbound, DNS, Router
-from base.tools import Dealdata, FileIo
+from base.tools import Dealdata, FileIo,run_cmd
 from base.vmess import node2vmesslink
 
-class Server():
+
+class Service():
+
     def __init__(self, root_path):
         self.p = None
         self.root_path = root_path
@@ -39,10 +41,23 @@ class Server():
         }
 
     def get_logset(self):
-        return self.log.get_set()
+        return self.log.get_logset()
 
     def get_selected_node_index(self):
-        return data(self.outbound)['index']
+        return self.outbound.get_index()
+
+    def tcping_node(self, key='all', count=3):
+        d, index = self.get_node(key)
+        for i in range(len(d)):
+            node = d[i]
+            address = node['address']
+            port = node['port']
+            result = run_cmd('tcping {} -c {} -p {}'.format(address, count, port)).decode()
+            if result.find('average = ') > 0:
+                result = result[result.find('average = ')+10:]
+            node['testResult'] = result
+            yield d[:i], index[:i]
+
 
     def get_node(self, key='all'):
         d, _ = Dealdata.cut_data(data(self.outbound)['vmess'], key)
@@ -50,7 +65,7 @@ class Server():
 
     def get_vmesslinks(self, key='all'):
         d, _ = Dealdata.cut_data(data(self.outbound)['vmess'], key)
-        vmesslinks = [{'remarks': x['remarks'], 'link':node2vmesslink(x)} for x in d]
+        vmesslinks = [{'remarks': x['remarks'], 'link': node2vmesslink(x)} for x in d]
         return vmesslinks, Dealdata.praseindex(key)
 
     def get_sub(self, key='all'):
@@ -88,6 +103,10 @@ class Server():
     def set_local_port(self, port):
         if Dealdata.is_int(port):
             self.inbound.set_port(int(port))
+            self.save()
+
+    def set_node_index(self, index):
+        if self.outbound.alter_index(index):
             self.save()
 
     def set_udp(self, bool=True):
@@ -192,11 +211,11 @@ class Server():
         self.save()
         return vmesslinks
 
-    def update_node_by_sub(self, key='all'):
+    def update_node_by_sub(self, key='all', proxy_port=None):
         """
         更新订阅
         """
-        self.outbound.update_node_by_sub(key)
+        self.outbound.update_node_by_sub(key, proxy_port)
         self.save()
 
     def add_router(self, value, mode):
@@ -215,7 +234,6 @@ class Server():
         self.save()
 
     def get_router(self, key, mode):
-
         if mode == 1:
             r = data(self.router)['direct']['ip']
             d, _ = Dealdata.cut_data(r, key)
@@ -258,7 +276,6 @@ class Server():
         self.save()
         return i
 
-
     def del_node(self, key=''):
         """
         删除节点
@@ -295,7 +312,7 @@ class Server():
     def save_config(self):
         obj = self.gen_config()
         path = self.root_path + os.sep + "v2ray-core" + os.sep + "config.json"
-        FileIo.savejson(path,obj)
+        FileIo.savejson(path, obj)
 
     def save(self):
         """
@@ -309,25 +326,7 @@ class Server():
             "dns": data(self.dns),
             "router": data(self.router)
         })
-
-    def stop(self):
-        p = self.p
-        if p is not None:
-            p.kill()
-
-
-    def run(self, index=None):
-        import subprocess
-        if index is not None:
-            self.outbound.select_index(index)
-            self.save()
         self.save_config()
-        path = self.root_path + os.sep + 'v2ray-core' + os.sep
-        runcode = path + 'v2ray' + ' --config ' + path + 'config.json'
-        self.p = subprocess.Popen(runcode, shell=True, stdout=subprocess.PIPE)
-        return self.get_selected_node_index(), self.inbound.data['port']
-
-
 
 
 def data(obj):

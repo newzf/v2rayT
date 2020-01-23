@@ -92,8 +92,8 @@ class Log():
         if loglevel != None:
             self.data['loglevel'] = loglevel
 
-    def get_set(self):
-        return self.data['logPath'],self.data['loglevel']
+    def get_logset(self):
+        return self.data['logPath'], self.data['loglevel']
 
     def gen_config_obj(self):
         if self.data['logPath'] == '':
@@ -131,11 +131,17 @@ class Outbound():
                     "writeBufferSize": 2
                 }
             }
-    def select_index(self, i):
-        if not Dealdata.is_int(i) or int(i) < 0:
-            return
-        if int(i) < len(self.data['vmess']):
-            self.data['index'] = int(i)
+
+    def alter_index(self, index):
+        if Dealdata.is_int(index):
+            i = int(index)
+            if i >= 0 and i < len(self.data['vmess']):
+                self.data['index'] = int(index)
+                return True
+        return False
+
+    def get_index(self):
+        return self.data['index']
 
     def open_mux(self):
         self.data['mux'] = True
@@ -179,13 +185,13 @@ class Outbound():
             "url": url
         })
 
-    def update_node_by_sub(self, subkey='all'):
+    def update_node_by_sub(self, subkey='all', proxy_port=None):
         sublist = self.data['sub']
         selectdata, _ = Dealdata.cut_data(sublist, subkey)
         subids = []
         newnodes = []
         for sub in selectdata:
-            vmessobjs = vmess.sublink2vmessobjs(sub['url'])
+            vmessobjs = vmess.sublink2vmessobjs(sub['url'], proxy_port)
             if vmessobjs != None:
                 subids.append(sub['id'])
                 for obj in vmessobjs:
@@ -206,6 +212,7 @@ class Outbound():
         _, newdata = Dealdata.cut_data(olddata, key)
         self.data['sub'] = newdata
         return len(olddata) - len(newdata)
+
 
     def set_tls(self, node):
         if node['streamSecurity'] != 'tls':
@@ -262,28 +269,28 @@ class Outbound():
         nodes = self.data['vmess']
         if len(nodes) == 0:
             return [{
-            "tag": "direct",
-            "protocol": "freedom",
-            "settings": {
-                "vnext": None,
-                "servers": None,
-                "response": None
-            },
-            "streamSettings": None,
-            "mux": None
-        }, {
-            "tag": "block",
-            "protocol": "blackhole",
-            "settings": {
-                "vnext": None,
-                "servers": None,
-                "response": {
-                    "type": "http"
-                }
-            },
-            "streamSettings": None,
-            "mux": None
-        }]
+                "tag": "direct",
+                "protocol": "freedom",
+                "settings": {
+                    "vnext": None,
+                    "servers": None,
+                    "response": None
+                },
+                "streamSettings": None,
+                "mux": None
+            }, {
+                "tag": "block",
+                "protocol": "blackhole",
+                "settings": {
+                    "vnext": None,
+                    "servers": None,
+                    "response": {
+                        "type": "http"
+                    }
+                },
+                "streamSettings": None,
+                "mux": None
+            }]
         node = nodes[self.data['index']]
         configObj = [{
             "tag": "proxy",
@@ -518,7 +525,6 @@ class Router():
                 "ip": None,
                 "domain": self.data['block']['domain']
             })
-
 
         if self.data['local']:
             configObj['rules'].append({

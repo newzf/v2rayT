@@ -1,2 +1,4 @@
 prettytable==0.7.2
 requests==2.22.0
+tcping==0.1.1rc1
+pysock==1.7.1

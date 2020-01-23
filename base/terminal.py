@@ -1,9 +1,10 @@
-from cmd import Cmd
+import time
 import itertools
 from prettytable import PrettyTable
+from cmd import Cmd
 
-from base.server import Server, data
-from base.tools import Dealdata
+from base.service import Service
+from base.v2ctl import V2ctl
 
 
 class Cli(Cmd):
@@ -13,12 +14,13 @@ class Cli(Cmd):
     def __init__(self, root_path):
         Cmd.__init__(self)
         self.root_path = root_path
-        self.server = Server(root_path)
-        self.server.save_config()
+        self.service = Service(root_path)
+        self.v2ctl = V2ctl(root_path)
+        
 
     def show_baseset(self, options):
-        obj = self.server.get_baseset()
-        titles = ['监听端口', '协议', '启用udp', '启用流量监听', '多路复用', '允许局域网连接', '绕过局域网和大陆', '路由策略']
+        obj = self.service.get_baseset()
+        titles = ['监听端口', '协议', 'udp转发', '启用流量监听', '多路复用', '允许局域网连接', '绕过局域网和大陆', '路由策略']
         datas = [
             [obj['port'], obj['protocol'], obj['udp'], obj['sniffing'], obj['mux'], obj['allowLANConn'], obj['local'],
              obj['domainStrategy']]]
@@ -28,43 +30,43 @@ class Cli(Cmd):
         optionsdict = options2dict(options, {'p': 'port', 'u': 'udp', 's': 'sniffing', 'm': 'mux', 'l': 'lanconn',
                                              'r': 'roundlocal', })
         if 'port' in optionsdict.keys():
-            self.server.set_local_port(optionsdict['port'])
+            self.service.set_local_port(optionsdict['port'])
         if 'udp' in optionsdict.keys():
             b = optionsdict['udp']
             if b.lower() == 'true':
-                self.server.set_udp(True)
+                self.service.set_udp(True)
             elif b.lower() == 'false':
-                self.server.set_udp(False)
+                self.service.set_udp(False)
         if 'sniffing' in optionsdict.keys():
             b = optionsdict['sniffing']
             if b.lower() == 'true':
-                self.server.set_sniffing(True)
+                self.service.set_sniffing(True)
             elif b.lower() == 'false':
-                self.server.set_sniffing(False)
+                self.service.set_sniffing(False)
         if 'mux' in optionsdict.keys():
             b = optionsdict['mux']
             if b.lower() == 'true':
-                self.server.set_mux(True)
+                self.service.set_mux(True)
             elif b.lower() == 'false':
-                self.server.set_mux(False)
+                self.service.set_mux(False)
         if 'lanconn' in optionsdict.keys():
             b = optionsdict['lanconn']
             if b.lower() == 'true':
-                self.server.set_LANConn(True)
+                self.service.set_LANConn(True)
             elif b.lower() == 'false':
-                self.server.set_LANConn(False)
+                self.service.set_LANConn(False)
         if 'roundlocal' in optionsdict.keys():
             b = optionsdict['roundlocal']
             if b.lower() == 'true':
-                self.server.set_round_local(True)
+                self.service.set_round_local(True)
             elif b.lower() == 'false':
-                self.server.set_round_local(False)
+                self.service.set_round_local(False)
         if 'asis' in optionsdict.keys():
-            self.server.set_domainStrategy(1)
+            self.service.set_domainStrategy(1)
         if 'ipifnonmatch' in optionsdict.keys():
-            self.server.set_domainStrategy(2)
+            self.service.set_domainStrategy(2)
         if 'ipondemand' in optionsdict.keys():
-            self.server.set_domainStrategy(3)
+            self.service.set_domainStrategy(3)
 
         self.show_baseset(None)
 
@@ -94,9 +96,9 @@ class Cli(Cmd):
         else:
             titles = ['别名', '地址', '端口', '加密方式', '传输协议', '安全传输']
             keys = ['remarks', 'address', "port", 'security', 'network', 'streamSecurity']
-        datas, index = self.server.get_node(key)
+        datas, index = self.service.get_node(key)
         show_table(titles, datas, keys, index)
-        print('当前选定节点索引: ', self.server.get_selected_node_index())
+        print('当前选定节点索引: ', self.service.get_selected_node_index())
 
     def add_node(self, options):
         optionsdict = options2dict(options, {
@@ -110,14 +112,14 @@ class Cli(Cmd):
             'h': 'host'
         })
         if 'vmess' in optionsdict.keys():
-            vmess = self.server.add_node_by_vmesslinks([optionsdict['vmess']])
+            vmess = self.service.add_node_by_vmesslinks([optionsdict['vmess']])
             print('添加列表:')
             for x in vmess:
                 print(x)
             if len(vmess) > 0:
                 print('[节点添加成功]')
         elif 'file' in optionsdict.keys():
-            vmess = self.server.add_node_by_vmesslinks_file(optionsdict['file'])
+            vmess = self.service.add_node_by_vmesslinks_file(optionsdict['file'])
             print('添加列表:')
             print('---------------------------------------------------------------')
             for x in vmess:
@@ -127,7 +129,10 @@ class Cli(Cmd):
                 print('[节点添加成功]')
         elif 'sub' in optionsdict.keys():
             key = optionsdict['sub'] if optionsdict['sub'] != '' else 'all'
-            self.server.update_node_by_sub(key)
+            if 'proxy' in optionsdict.keys():
+                self.service.update_node_by_sub(key, optionsdict['proxy'])
+            else:
+                self.service.update_node_by_sub(key)
             print('[从订阅更新节点成功]')
         elif 'address' in optionsdict.keys() and 'port' in optionsdict.keys() and 'id' in optionsdict.keys() and 'aid' in optionsdict.keys() and 'network' in optionsdict.keys():
             addr = optionsdict['address']
@@ -141,7 +146,7 @@ class Cli(Cmd):
             host = optionsdict['host'] if 'host' in optionsdict.keys() else ''
             path = optionsdict['path'] if 'path' in optionsdict.keys() else ''
             tls = optionsdict['tls'] if 'tls' in optionsdict.keys() else ''
-            node = self.server.add_node(addr, port, id, aid, net, remarks, security, type, host, path, tls)
+            node = self.service.add_node(addr, port, id, aid, net, remarks, security, type, host, path, tls)
             print('添加节点:')
             print(node)
             print('[成功]')
@@ -149,7 +154,7 @@ class Cli(Cmd):
     def del_node(self, options):
         if len(options) == 1:
             key = options[0]
-            i = self.server.del_node(key)
+            i = self.service.del_node(key)
             print('[成功删除', i, '个节点]')
 
     def export_node(self, options):
@@ -158,11 +163,25 @@ class Cli(Cmd):
             key = options[0]
         titles = ['别名', 'vmess链接']
         keys = ['remarks', 'link']
-        datas, _ = self.server.get_vmesslinks(key)
+        datas, _ = self.service.get_vmesslinks(key)
         print('------------------------------------------------')
         for d in datas:
             print(d['link'])
         print('------------------------------------------------')
+
+    def tcping_node(self, options):
+        import sys,os
+        key = 'all'
+        count = 3
+        if len(options) >= 1:
+            key = options[0]
+        optionsdict = options2dict(options, {'c': 'count'})
+        if 'count' in optionsdict.keys():
+            count = int(optionsdict['count'])
+        titles = ['别名', '地址', '端口', 'tcping']
+        keys = ['remarks', 'address', "port", 'testResult']
+        for datas, index in self.service.tcping_node(key, count):
+            show_table(titles, datas, keys, index)
 
     def do_node(self, line):
         l = self.args2list(line)
@@ -176,6 +195,8 @@ class Cli(Cmd):
                 self.del_node(options)
             elif l[0] == 'export':
                 self.export_node(options)
+            elif l[0] == 'tcping':
+                self.tcping_node(options)
 
     def add_sub(self, options):
         if len(options) == 0:
@@ -183,22 +204,22 @@ class Cli(Cmd):
         url = options[0]
         optionsdict = options2dict(options[1:], {'r': 'remark'})
         if 'remark' in optionsdict.keys():
-            self.server.add_sub(url, optionsdict['remark'])
+            self.service.add_sub(url, optionsdict['remark'])
             print('[订阅添加成功]')
         else:
-            self.server.add_sub(url)
+            self.service.add_sub(url)
             print('[订阅添加成功]')
 
     def show_sub(self, options):
         titles = ['别名', 'url']
         keys = ['remarks', 'url']
-        datas, _ = self.server.get_sub()
+        datas, _ = self.service.get_sub()
         show_table(titles, datas, keys)
 
     def del_sub(self, options):
         if len(options) == 1:
             key = options[0]
-            i = self.server.del_sub(key)
+            i = self.service.del_sub(key)
             print('[成功删除', i, '个订阅]')
 
     def do_sub(self, line):
@@ -216,11 +237,11 @@ class Cli(Cmd):
         if len(options) == 0:
             return
         dns = options[0]
-        self.server.add_dns(dns)
+        self.service.add_dns(dns)
         print('[DNS添加成功]')
 
     def show_dns(self, options):
-        obj, _ = self.server.get_dns()
+        obj, _ = self.service.get_dns()
         datas = obj
         table = PrettyTable()
         table.add_column('索引', list(range(len(datas))))
@@ -230,7 +251,7 @@ class Cli(Cmd):
     def del_dns(self, options):
         if len(options) == 1:
             key = options[0]
-            i = self.server.del_dns(key)
+            i = self.service.del_dns(key)
             print('[删除成功', i, '条]')
 
     def do_dns(self, line):
@@ -270,7 +291,7 @@ class Cli(Cmd):
                 mode = 6
                 d = optionsdict['domain']
         if mode > 0 and d != '':
-            self.server.add_router(d, mode)
+            self.service.add_router(d, mode)
 
     def show_router(self, options):
         optionsdict = options2dict(options, {'i': 'ip', 'd': 'domain', 's': 'select'})
@@ -292,7 +313,7 @@ class Cli(Cmd):
             elif 'domain' in optionsdict.keys():
                 mode = 6
         if mode > 0:
-            datas, index = self.server.get_router(key, mode)
+            datas, index = self.service.get_router(key, mode)
             index = list(range(len(datas))) if index is None else index[:len(datas)]
             table = PrettyTable()
             table.add_column('索引', index)
@@ -321,7 +342,7 @@ class Cli(Cmd):
             elif 'domain' in optionsdict.keys():
                 mode = 6
         if mode > 0:
-            i = self.server.del_router(key, mode)
+            i = self.service.del_router(key, mode)
             print('[删除成功', i, '条]')
 
     def do_router(self, line):
@@ -338,17 +359,17 @@ class Cli(Cmd):
 
     def show_log(self, options):
         titles = ['日志地址', '日志等级']
-        datas = [self.server.get_logset()]
+        datas = [self.service.get_logset()]
         show_table(titles, datas)
 
     def alter_log(self, options):
         optionsdict = options2dict(options, {'p':'path', 'l':'level'})
         if 'path' in optionsdict.keys():
-            self.server.set_logPath(optionsdict['path'])
+            self.service.set_logPath(optionsdict['path'])
             self.show_log(None)
         if 'level' in optionsdict.keys():
             if optionsdict['level'] in ['debug','info','warning','error','none']:
-                self.server.set_logPath(optionsdict['level'])
+                self.service.set_logPath(optionsdict['level'])
                 self.show_log(None)
 
     def do_log(self, line):
@@ -359,6 +380,51 @@ class Cli(Cmd):
                 self.show_log(options)
             elif l[0] == 'alter':
                 self.alter_log(options)
+
+
+    def start_service(self, options):
+        if options is not None and len(options) == 1:
+            self.service.set_node_index(options[0])
+        if self.v2ctl.is_running():
+            self.v2ctl.stop()
+        self.v2ctl.start()
+        time.sleep(2.0)
+        if self.v2ctl.is_running():
+            print('v2ray启动成功, 监听端口: {}, 选定节点: {}'.format(self.service.get_baseset()['port'],
+                                                         self.service.get_selected_node_index()))
+        else:
+            print('v2ray启动失败,请在logs文件夹查看临时日志文件v2.log')
+
+    def stop_service(self, options):
+        self.v2ctl.stop()
+
+    def restart_service(self, options):
+        if options is not None and len(options) == 1:
+            self.service.set_node_index(options[0])
+        self.v2ctl.restart()
+        time.sleep(2.0)
+        if self.v2ctl.is_running():
+            print('v2ray启动成功, 监听端口: {}, 选定节点: {}'.format(self.service.get_baseset()['port'],
+                                                         self.service.get_selected_node_index()))
+        else:
+            print('v2ray启动失败,请在logs文件夹查看临时日志文件v2.log')
+
+    def status_service(self, options):
+        print(self.v2ctl.statue())
+
+    def do_service(self, line):
+        l = self.args2list(line)
+        if len(l) != 0:
+            options = l[1:]
+            if l[0] == 'start':
+                self.start_service(options)
+            elif l[0] == 'stop':
+                self.stop_service(options)
+            elif l[0] == 'restart':
+                self.restart_service(options)
+            elif l[0] == 'status':
+                self.status_service(options)
+
 
     def help_baseset(self):
         print('')
@@ -389,11 +455,13 @@ class Cli(Cmd):
         print('  show [options]               {}'.format('查看节点信息'))
         print('  del {{索引参数}}                {}'.format('根据索引参数删除节点'))
         print('  export {{索引参数}}             {}'.format('导出为vmess链接'))
+        print('  tcping {{索引参数}}             {}'.format('tcping指定索引节点'))
         print('')
         print('add Options')
         print('  --vmess {{vmess链接}}          {}'.format('导入vmess://数据'))
         print('  --file {{文件名}}               {}'.format('从文件批量导入vmess://数据,文件必须与v2rayT.py处于同级目录'))
         print('  --sub [订阅索引参数]            {}'.format('从订阅更新节点,没有索引参数就默认为全部'))
+        print('  --proxy {{本地sock5端口}}       {}'.format('和--sub一起用,通过代理更新订阅'))
         print('  ')
         print('  下面11个属于直接通过参数添加')
         print('  -a,--address {地址}')
@@ -413,6 +481,9 @@ class Cli(Cmd):
         print('  -s,--select {索引参数}  %s' % '根据索引参数选取')
         print('      示例: -s 0-2,6,7   选取索引为0,1,2,6,7的数据')
         print('  --all                 {}'.format('显示全部字段'))
+        print('')
+        print('tcping Options')
+        print('  -c,--count {tcping次数}  %s' % '默认3次')
         print('')
 
     def help_sub(self):
@@ -480,35 +551,6 @@ class Cli(Cmd):
         print('  -l,--level  {{debug|info|warning|error|none}}            {}'.format('选定代理访问路由表'))
         print('')
 
-    def start_service(self, options):
-        if options is not None and len(options) == 1:
-            i, port = self.server.run(options[0])
-            self.prompt = 'v2rayT(running)> '
-        else:
-            i, port = self.server.run()
-            self.prompt = 'v2rayT(running)> '
-        print('选取节点索引为: ', i,'    监听端口为: ', port)
-
-
-    def stop_service(self, options):
-        self.server.stop()
-        self.prompt = 'v2rayT> '
-
-    def restart_service(self, options):
-        self.stop_service(None)
-        self.start_service(None)
-
-    def do_service(self, line):
-        l = self.args2list(line)
-        if len(l) != 0:
-            options = l[1:]
-            if l[0] == 'start':
-                self.start_service(options)
-            elif l[0] == 'stop':
-                self.stop_service(options)
-            elif l[0] == 'restart':
-                self.restart_service(options)
-
     def help_service(self):
         print('')
         print('service {commands} [options] ...')
@@ -516,17 +558,16 @@ class Cli(Cmd):
         print('Commands:')
         print('  start [节点索引]                         {}'.format('启动v2ray'))
         print('  stop                                    {}'.format('停止v2ray'))
-        print('  restart                                 {}'.format('重启v2ray'))
+        print('  restart [节点索引]                       {}'.format('重启v2ray'))
+        print('  status                                  {}'.format('查看v2ray状态'))
         print('')
 
     def help_exit(self):
-        print('')
         print('')
         print('exit      退出')
         print('')
 
     def help_version(self):
-        print('')
         print('')
         print('version   查看版本')
         print('')
@@ -536,7 +577,7 @@ class Cli(Cmd):
         return self.comtools(line, text, data)
 
     def complete_node(self, text, line, begidx, endidx):
-        data = ['add', 'show', 'del', 'export']
+        data = ['add', 'show', 'del', 'export', 'tcping']
         return self.comtools(line, text, data)
 
     def complete_sub(self, text, line, begidx, endidx):
@@ -556,7 +597,7 @@ class Cli(Cmd):
         return self.comtools(line, text, data)
 
     def complete_service(self, text, line, begidx, endidx):
-        data = ['start', 'stop', 'restart']
+        data = ['start', 'stop', 'restart', 'status']
         return self.comtools(line, text, data)
 
     def do_version(self, *args):
@@ -600,7 +641,7 @@ def options2dict(l, keys=None):
     return d
 
 
-def show_table(titles, datas, keys=None, index=None):
+def show_table(titles, datas, keys=None, index=None, is_print=True):
     """
     打印表格
     """
@@ -612,10 +653,17 @@ def show_table(titles, datas, keys=None, index=None):
         for i in range(len(datas)):
             x = datas[i]
             table.add_row(list(itertools.chain((index[i],), x)))
-        print(table)
+        if is_print:
+            print(table)
+        else:
+            return table
     elif len(titles) == len(keys):
         for i in range(len(datas)):
             x = datas[i]
             d = [x[key] for key in keys]
             table.add_row(list(itertools.chain((index[i],), d)))
-        print(table)
+        if is_print:
+            print(table)
+        else:
+            return table
+
